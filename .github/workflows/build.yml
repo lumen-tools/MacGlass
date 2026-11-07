@@ -1,0 +1,99 @@
+name: Build
+
+# Builds MacGlass.app on every push and pull request. On main, a new version in VERSION
+# (with release-notes/<version>.md) publishes "Version <x.y.z>" with the zipped app.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read versions
+        id: v
+        run: |
+          echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+          echo "librashader=$(tr -d '[:space:]' < LIBRASHADER_VERSION)" >> "$GITHUB_OUTPUT"
+          swift --version
+          rustc --version || true
+
+      - name: Compile (fail fast)
+        run: swift build -c release
+
+      - name: Cache librashader
+        id: libra-cache
+        uses: actions/cache@v4
+        with:
+          path: build/librashader
+          key: librashader-${{ steps.v.outputs.librashader }}-${{ hashFiles('scripts/build-librashader.sh', 'Sources/LibraBridge/vendor/*.h') }}
+
+      - name: Build librashader (${{ steps.v.outputs.librashader }})
+        if: steps.libra-cache.outputs.cache-hit != 'true'
+        run: scripts/build-librashader.sh build/librashader
+
+      - name: Fetch shaders (libretro slang-shaders, Retro Crisis)
+        run: scripts/fetch-shaders.sh build/Shaders
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Build MacGlass.app
+        run: scripts/make-app.sh build/librashader build/Shaders
+
+      - name: Self-test
+        run: build/MacGlass.app/Contents/MacOS/MacGlass --selftest build/selftest
+
+      - name: Zip
+        run: |
+          cp build/Shaders/VERSIONS.txt build/SHADER-VERSIONS.txt
+          ditto -c -k --sequesterRsrc --keepParent build/MacGlass.app "build/MacGlass-${{ steps.v.outputs.version }}.zip"
+          ls -la build/*.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MacGlass-${{ steps.v.outputs.version }}
+          path: build/MacGlass-${{ steps.v.outputs.version }}.zip
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selftest-images
+          path: build/selftest
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Publish release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.v.outputs.version }}"
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists - nothing to publish."
+            exit 0
+          fi
+          NOTES="release-notes/$VERSION.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "::warning::$NOTES is missing - no release published."
+            exit 0
+          fi
+          { cat "$NOTES"; echo; echo "### Bundled"; echo; echo '```'; cat build/SHADER-VERSIONS.txt; \
+            echo "SnowflakePowered/librashader ${{ steps.v.outputs.librashader }}"; echo '```'; } > build/notes.md
+          FLAGS="--latest"
+          case "$VERSION" in *-*) FLAGS="--prerelease" ;; esac
+          gh release create "v$VERSION" "build/MacGlass-$VERSION.zip" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Version $VERSION" --notes-file build/notes.md $FLAGS
