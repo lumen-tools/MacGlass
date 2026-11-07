@@ -6,6 +6,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 TAG=$(tr -d '[:space:]' < "$ROOT/LIBRASHADER_VERSION")
 OUT=${1:-$ROOT/build/librashader}
+mkdir -p "$OUT" && OUT=$(cd "$OUT" && pwd)
 SRC=${LIBRASHADER_SRC:-$ROOT/build/librashader-src}
 
 if [ ! -d "$SRC/.git" ]; then

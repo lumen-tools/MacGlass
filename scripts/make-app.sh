@@ -5,6 +5,8 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 LIBRA=${1:-$ROOT/build/librashader}
 SHADERS=${2:-$ROOT/build/Shaders}
+LIBRA=$(cd "$LIBRA" && pwd)
+SHADERS=$(cd "$SHADERS" && pwd)
 VERSION=$(tr -d '[:space:]' < "$ROOT/VERSION")
 APP=$ROOT/build/MacGlass.app
 cd "$ROOT"

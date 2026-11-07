@@ -10,6 +10,7 @@ OUT=${1:-$ROOT/build/Shaders}
 TMP=$(mktemp -d)
 rm -rf "$OUT"
 mkdir -p "$OUT/rc"
+OUT=$(cd "$OUT" && pwd)
 
 # libretro slang-shaders
 REF=${SLANG_SHADERS_REF:-master}
@@ -27,7 +28,13 @@ TAG=${RETRO_CRISIS_TAG:-$(gh release view --repo "$RC_REPO" --json tagName -q .t
 mkdir -p "$TMP/rc-zip" "$TMP/rc"
 gh release download "$TAG" --repo "$RC_REPO" --pattern '*.zip' --dir "$TMP/rc-zip"
 for z in "$TMP"/rc-zip/*.zip; do unzip -q -o "$z" -d "$TMP/rc"; done
-RC_DIR=$(find "$TMP/rc" -maxdepth 3 -type d -iname 'retro crisis' | head -n 1)
+# the shallowest "retro crisis" folder that contains presets
+RC_DIR=""
+while IFS= read -r d; do
+  if [ -n "$(find "$d" -name '*.slangp' -print -quit)" ]; then RC_DIR=$d; break; fi
+done < <(find "$TMP/rc" -maxdepth 4 -type d -iname 'retro crisis' | awk -F/ '{print NF "\t" $0}' | sort -n | cut -f2-)
+echo "Retro Crisis $TAG archive:"
+find "$TMP/rc" -maxdepth 3 -type d | sed "s|$TMP/rc||" | head -n 40
 if [ -z "$RC_DIR" ]; then
   echo "error: no 'retro crisis' folder in the $TAG release" >&2
   find "$TMP/rc" -maxdepth 3 | head -n 30 >&2
@@ -44,3 +51,7 @@ VERS
 cat "$OUT/VERSIONS.txt"
 echo "presets: RetroArch $(find "$OUT/shaders_slang" -name '*.slangp' | wc -l), Retro Crisis $(find "$OUT/rc" -name '*.slangp' | wc -l)"
 rm -rf "$TMP"
+if [ "$(find "$OUT/rc" -name '*.slangp' | wc -l)" -eq 0 ]; then
+  echo "error: no Retro Crisis presets found" >&2
+  exit 1
+fi
