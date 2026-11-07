@@ -125,7 +125,7 @@ struct CaptureOptions {
     var freeScale = false
     var frameSkipIndex = 0
     var clone = false
-    var transparent = true // Click-through is the default
+    var transparent = false // Solid by default; Glass fullscreen is always click-through
     var flipHorizontal = false
     var flipVertical = false
     var vertical = false

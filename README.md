@@ -25,7 +25,7 @@ ScreenCaptureKit ─► preprocess (crop, Pixel Size, Bilinear Filter) ─► li
 - **Glass** (Output > Mode): the MacGlass window shows the desktop *underneath it* with the shader applied. Move it over a game or emulator, or go fullscreen (⌃⇧G) and the whole display gets the shader. MacGlass' own windows are excluded from the capture, so there is no mirror feedback.
 - **Glass on a window** (Input > Window): MacGlass covers the chosen window with the shaded image and follows it. The overlay is click-through, so you keep playing in the window below.
 - **Clone**: the captured display, window, capture device or image is shown in MacGlass' own window.
-- **Click-through** (Output > Window, on by default): clicks on the picture go to the app below and the window stays on top. The title bar and the window edges stay clickable, so you can still move, resize and close it (the red button quits MacGlass). Output > Window > Solid or ⌃⇧T turns it off.
+- **Click-through** (Output > Window, or ⌃⇧T): clicks on the picture go to the app below and the window stays on top. The title bar and the window edges stay clickable, so you can still move, resize and close it (the red button quits MacGlass). The default is Solid. Fullscreen in Glass mode is always click-through.
 
 ## Shaders
 
