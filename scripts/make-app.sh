@@ -29,7 +29,10 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # Ad-hoc signature (no hardened runtime, so the bundled librashader.dylib can be loaded).
 codesign --force --sign - "$APP/Contents/Frameworks/librashader.dylib"
-codesign --force --sign - "$APP"
+# Designated requirement = bundle identifier (instead of the code hash), so the Screen Recording
+# permission stays valid across updates.
+codesign --force --sign - --requirements '=designated => identifier "io.github.lumen-tools.MacGlass"' "$APP"
+codesign -d -r- "$APP"
 codesign --verify --deep "$APP"
 lipo -info "$APP/Contents/MacOS/MacGlass"
 du -sh "$APP"

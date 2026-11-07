@@ -4,6 +4,7 @@ import AppKit
 import IOKit.pwr_mgt
 import LibraBridge
 import Metal
+import ScreenCaptureKit
 import UniformTypeIdentifiers
 
 let appVersion = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev"
@@ -48,6 +49,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     private var awakeAssertion: IOPMAssertionID = 0
     private var lastChainError: String?
     var waitingForPermission = false
+    private var permissionCheckRunning = false
     var permissionHint: NSView?
 
     // Menus updated dynamically
@@ -227,7 +229,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         title.textColor = .white
         let text = NSTextField(wrappingLabelWithString:
             "Allow MacGlass in System Settings > Privacy & Security > Screen & System Audio Recording. "
-            + "MacGlass starts automatically once access is granted. If macOS offers \"Quit & Reopen\", choose it.")
+            + "MacGlass starts automatically once access is granted. If macOS offers \"Quit & Reopen\", choose it.\n\n"
+            + "MacGlass is already switched on there? An older version may be registered: remove MacGlass "
+            + "from the list with \"−\", then add it again with \"+\" (or switch it off and on) and reopen MacGlass.")
         text.textColor = NSColor(white: 0.85, alpha: 1)
         text.alignment = .center
         text.preferredMaxLayoutWidth = 420
@@ -252,10 +256,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func start() {
         stopInputs()
         let input = options.input
-        if AppController.needsScreenCapture(input) && !CGPreflightScreenCaptureAccess() {
-            waitForPermission()
-            return
-        }
+        // No CGPreflightScreenCaptureAccess() gate here: it can report "no access" although access was
+        // granted. Capturing is attempted directly; only a refusal by ScreenCaptureKit shows the hint.
         setPermissionHint(visible: false)
         running = true
         firstStart = false
@@ -308,6 +310,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         setPermissionHint(visible: true)
         updateWindowMode()
         window?.title = "MacGlass (waiting for Screen Recording permission)"
+    }
+
+    /// While waiting for access: asks ScreenCaptureKit itself (not CGPreflightScreenCaptureAccess) and
+    /// starts capturing as soon as it answers.
+    private func retryPermission() {
+        guard !permissionCheckRunning else { return }
+        permissionCheckRunning = true
+        Task { @MainActor [weak self] in
+            let ok = (try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)) != nil
+            guard let self else { return }
+            self.permissionCheckRunning = false
+            if ok && self.waitingForPermission { self.start() }
+        }
     }
 
     func setPermissionHint(visible: Bool) {
@@ -485,7 +500,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         updateMousePassthrough()
         if waitingForPermission {
             ticks += 1
-            if ticks % 30 == 0 && CGPreflightScreenCaptureAccess() { start() }
+            if ticks % 90 == 0 { retryPermission() }
             return
         }
         guard running else {
