@@ -125,7 +125,7 @@ struct CaptureOptions {
     var freeScale = false
     var frameSkipIndex = 0
     var clone = false
-    var transparent = false
+    var transparent = true // Click-through is the default
     var flipHorizontal = false
     var flipVertical = false
     var vertical = false

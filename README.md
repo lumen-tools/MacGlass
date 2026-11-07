@@ -14,7 +14,7 @@ The app is not notarized. If macOS says it "is damaged" or "cannot be opened", r
 xattr -dr com.apple.quarantine /Applications/MacGlass.app
 ```
 
-On first start, macOS asks for **Screen Recording** permission (System Settings > Privacy & Security > Screen & System Audio Recording). Allow MacGlass there and restart it. After an update, you may have to allow it again.
+On first start, macOS asks for **Screen Recording** permission. Take your time: MacGlass shows a hint with a button to System Settings > Privacy & Security > Screen & System Audio Recording and starts by itself once access is granted (if macOS offers "Quit & Reopen", choose it). After an update, you may have to allow it again.
 
 ## How it works
 
@@ -25,7 +25,7 @@ ScreenCaptureKit ─► preprocess (crop, Pixel Size, Bilinear Filter) ─► li
 - **Glass** (Output > Mode): the MacGlass window shows the desktop *underneath it* with the shader applied. Move it over a game or emulator, or go fullscreen (⌃⇧G) and the whole display gets the shader. MacGlass' own windows are excluded from the capture, so there is no mirror feedback.
 - **Glass on a window** (Input > Window): MacGlass covers the chosen window with the shaded image and follows it. The overlay is click-through, so you keep playing in the window below.
 - **Clone**: the captured display, window, capture device or image is shown in MacGlass' own window.
-- **Click-through** (Output > Window): mouse clicks go to the app below; the window stays on top. Click the Dock icon or press ⌃⇧T to make it solid again.
+- **Click-through** (Output > Window, on by default): clicks on the picture go to the app below and the window stays on top. The title bar and the window edges stay clickable, so you can still move, resize and close it (the red button quits MacGlass). Output > Window > Solid or ⌃⇧T turns it off.
 
 ## Shaders
 

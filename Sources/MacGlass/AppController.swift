@@ -47,6 +47,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     private var ticks = 0
     private var awakeAssertion: IOPMAssertionID = 0
     private var lastChainError: String?
+    var waitingForPermission = false
+    var permissionHint: NSView?
 
     // Menus updated dynamically
     var displayMenu = NSMenu(title: "Desktop")
@@ -135,6 +137,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         }
 
         if !CGPreflightScreenCaptureAccess() {
+            // Asks once; MacGlass then waits (with a hint in the window) until access is granted.
             CGRequestScreenCaptureAccess()
         }
         if case .none = options.input {
@@ -153,11 +156,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        // Clicking the Dock icon brings a click-through window back to "Solid".
-        if options.transparent && !fullscreen {
-            options.transparent = false
-            updateWindowMode()
-        }
         window.makeKeyAndOrderFront(nil)
         return true
     }
@@ -184,7 +182,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         window = OutputWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 720),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
-        window.contentView = view
+        let container = NSView(frame: view.frame)
+        view.frame = container.bounds
+        view.autoresizingMask = [.width, .height]
+        container.addSubview(view)
+        let hint = makePermissionHint()
+        container.addSubview(hint)
+        NSLayoutConstraint.activate([
+            hint.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            hint.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            hint.widthAnchor.constraint(lessThanOrEqualTo: container.widthAnchor, constant: -32),
+        ])
+        permissionHint = hint
+        window.contentView = container
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.backgroundColor = .black
@@ -211,14 +221,44 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         }
     }
 
+    private func makePermissionHint() -> NSView {
+        let title = NSTextField(labelWithString: "MacGlass needs permission to record the screen")
+        title.font = NSFont.boldSystemFont(ofSize: 15)
+        title.textColor = .white
+        let text = NSTextField(wrappingLabelWithString:
+            "Allow MacGlass in System Settings > Privacy & Security > Screen & System Audio Recording. "
+            + "MacGlass starts automatically once access is granted. If macOS offers \"Quit & Reopen\", choose it.")
+        text.textColor = NSColor(white: 0.85, alpha: 1)
+        text.alignment = .center
+        text.preferredMaxLayoutWidth = 420
+        let button = NSButton(title: "Open System Settings", target: self, action: #selector(openScreenRecordingSettings(_:)))
+        button.bezelStyle = .rounded
+        let stack = NSStackView(views: [title, text, button])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 10
+        stack.edgeInsets = NSEdgeInsets(top: 18, left: 18, bottom: 18, right: 18)
+        stack.wantsLayer = true
+        stack.layer?.backgroundColor = NSColor(white: 0.12, alpha: 0.95).cgColor
+        stack.layer?.cornerRadius = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.isHidden = true
+        return stack
+    }
+
     // MARK: - Capture
 
     /// Processing > Start: (re)starts capturing the current input.
     func start() {
         stopInputs()
+        let input = options.input
+        if AppController.needsScreenCapture(input) && !CGPreflightScreenCaptureAccess() {
+            waitForPermission()
+            return
+        }
+        setPermissionHint(visible: false)
         running = true
         firstStart = false
-        let input = options.input
         let prev = captureTask
         captureTask = Task { @MainActor [weak self] in
             await prev?.value
@@ -241,6 +281,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                     let texture = try ImageInput.load(url, device: self.device)
                     self.sink.push(texture: texture)
                 }
+            } catch CaptureError.permission {
+                self.running = false
+                self.waitForPermission()
             } catch {
                 self.running = false
                 self.alert("Could not start capture", error.localizedDescription)
@@ -251,8 +294,37 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         updateWindowMode()
     }
 
+    static func needsScreenCapture(_ input: InputKind) -> Bool {
+        switch input {
+        case .display, .window: return true
+        default: return false
+        }
+    }
+
+    /// No Screen Recording access yet: show a hint in the window and start as soon as access is granted.
+    func waitForPermission() {
+        running = false
+        waitingForPermission = true
+        setPermissionHint(visible: true)
+        updateWindowMode()
+        window?.title = "MacGlass (waiting for Screen Recording permission)"
+    }
+
+    func setPermissionHint(visible: Bool) {
+        if !visible { waitingForPermission = false }
+        permissionHint?.isHidden = !visible
+        updateMousePassthrough()
+    }
+
+    @objc func openScreenRecordingSettings(_ sender: Any?) {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     /// Processing > Stop.
     func stop() {
+        setPermissionHint(visible: false)
         stopInputs()
         running = false
         updateTitle()
@@ -318,7 +390,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                 window.setFrame(window.frameRect(forContentRect: content), display: true)
             }
         }
-        window.ignoresMouseEvents = clickThrough
+        updateMousePassthrough()
         if fullscreen {
             window.level = .statusBar
         } else if clickThrough || options.transparent {
@@ -346,6 +418,29 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             updateWindowMode()
         }
         window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Click-through applies to the picture only: the title bar and the window edges stay clickable
+    /// (move, resize, close). macOS can only ignore mouse events per window, so this follows the cursor.
+    var clickThroughActive: Bool {
+        (options.transparent || isWindowOverlay || (fullscreen && isDesktopGlass)) && !waitingForPermission
+    }
+
+    func updateMousePassthrough() {
+        guard let window else { return }
+        var ignore = clickThroughActive
+        if ignore && window.styleMask.contains(.titled) {
+            // keep the current state while a drag (move / resize) is in progress
+            if NSEvent.pressedMouseButtons != 0 && !window.ignoresMouseEvents { return }
+            let p = NSEvent.mouseLocation
+            let frame = window.frame
+            let content = window.contentRect(forFrameRect: frame)
+            let edge: CGFloat = 5
+            let inTitleBar = frame.contains(p) && p.y >= content.maxY
+            let nearEdge = frame.insetBy(dx: -edge, dy: -edge).contains(p) && !frame.insetBy(dx: edge, dy: edge).contains(p)
+            if inTitleBar || nearEdge { ignore = false }
+        }
+        if window.ignoresMouseEvents != ignore { window.ignoresMouseEvents = ignore }
     }
 
     /// Captured pixels per output pixel scale of the screen the window is on.
@@ -387,6 +482,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     // MARK: - Timer: window tracking, auto size, title
 
     private func onTimer() {
+        updateMousePassthrough()
+        if waitingForPermission {
+            ticks += 1
+            if ticks % 30 == 0 && CGPreflightScreenCaptureAccess() { start() }
+            return
+        }
         guard running else {
             ticks += 1
             if ticks % 30 == 0 { updateTitle() }
