@@ -14,7 +14,7 @@ The app is not notarized. If macOS says it "is damaged" or "cannot be opened", r
 xattr -dr com.apple.quarantine /Applications/MacGlass.app
 ```
 
-On first start, macOS asks for **Screen Recording** permission. Take your time: MacGlass shows a hint with a button to System Settings > Privacy & Security > Screen & System Audio Recording and starts by itself once access is granted (if macOS offers "Quit & Reopen", choose it). If MacGlass keeps showing the hint although it is switched on in that list (an older version may be registered there), remove it with "−", add `/Applications/MacGlass.app` again with "+" and reopen MacGlass, or reset the entry in Terminal:
+On first start, macOS asks for **Screen Recording** permission. Take your time: MacGlass shows a hint with a button to System Settings > Privacy & Security > Screen & System Audio Recording. Allow MacGlass there, then reopen it (or choose "Quit & Reopen" if macOS offers it); "Try Again" in the hint checks once more. MacGlass never asks repeatedly on its own. If MacGlass keeps showing the hint although it is switched on in that list (an older version may be registered there), remove it with "−", add `/Applications/MacGlass.app` again with "+" and reopen MacGlass, or reset the entry in Terminal:
 
 ```bash
 tccutil reset ScreenCapture io.github.lumen-tools.MacGlass

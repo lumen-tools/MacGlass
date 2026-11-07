@@ -49,7 +49,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     private var awakeAssertion: IOPMAssertionID = 0
     private var lastChainError: String?
     var waitingForPermission = false
-    private var permissionCheckRunning = false
     var permissionHint: NSView?
 
     // Menus updated dynamically
@@ -138,10 +137,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             alert("librashader could not be loaded", error + "\n\nShaders are disabled; the captured image is shown without a shader.")
         }
 
-        if !CGPreflightScreenCaptureAccess() {
-            // Asks once; MacGlass then waits (with a hint in the window) until access is granted.
-            CGRequestScreenCaptureAccess()
-        }
         if case .none = options.input {
             options.input = .display(window.screen?.displayID ?? CGMainDisplayID())
         }
@@ -228,16 +223,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         title.font = NSFont.boldSystemFont(ofSize: 15)
         title.textColor = .white
         let text = NSTextField(wrappingLabelWithString:
-            "Allow MacGlass in System Settings > Privacy & Security > Screen & System Audio Recording. "
-            + "MacGlass starts automatically once access is granted. If macOS offers \"Quit & Reopen\", choose it.\n\n"
-            + "MacGlass is already switched on there? An older version may be registered: remove MacGlass "
-            + "from the list with \"−\", then add it again with \"+\" (or switch it off and on) and reopen MacGlass.")
+            "Allow MacGlass in System Settings > Privacy & Security > Screen & System Audio Recording, "
+            + "then quit and reopen MacGlass (or choose \"Quit & Reopen\" if macOS offers it) and click Try Again if needed.\n\n"
+            + "MacGlass is already switched on there? The entry may belong to an older version: remove MacGlass "
+            + "from the list with \"−\", add /Applications/MacGlass.app again with \"+\" and reopen MacGlass.")
         text.textColor = NSColor(white: 0.85, alpha: 1)
         text.alignment = .center
         text.preferredMaxLayoutWidth = 420
         let button = NSButton(title: "Open System Settings", target: self, action: #selector(openScreenRecordingSettings(_:)))
         button.bezelStyle = .rounded
-        let stack = NSStackView(views: [title, text, button])
+        let retry = NSButton(title: "Try Again", target: self, action: #selector(retryCapture(_:)))
+        retry.bezelStyle = .rounded
+        retry.keyEquivalent = "\r"
+        let buttons = NSStackView(views: [button, retry])
+        buttons.orientation = .horizontal
+        let stack = NSStackView(views: [title, text, buttons])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 10
@@ -312,23 +312,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         window?.title = "MacGlass (waiting for Screen Recording permission)"
     }
 
-    /// While waiting for access: asks ScreenCaptureKit itself (not CGPreflightScreenCaptureAccess) and
-    /// starts capturing as soon as it answers.
-    private func retryPermission() {
-        guard !permissionCheckRunning else { return }
-        permissionCheckRunning = true
-        Task { @MainActor [weak self] in
-            let ok = (try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)) != nil
-            guard let self else { return }
-            self.permissionCheckRunning = false
-            if ok && self.waitingForPermission { self.start() }
-        }
-    }
-
     func setPermissionHint(visible: Bool) {
         if !visible { waitingForPermission = false }
         permissionHint?.isHidden = !visible
         updateMousePassthrough()
+    }
+
+    /// "Try Again" in the permission hint. MacGlass never retries on its own: every attempt without
+    /// access can make macOS show its permission dialog again.
+    @objc func retryCapture(_ sender: Any?) {
+        start()
     }
 
     @objc func openScreenRecordingSettings(_ sender: Any?) {
@@ -500,7 +493,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         updateMousePassthrough()
         if waitingForPermission {
             ticks += 1
-            if ticks % 90 == 0 { retryPermission() }
             return
         }
         guard running else {
