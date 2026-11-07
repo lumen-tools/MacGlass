@@ -7,7 +7,24 @@ struct PixelSizeInfo {
     let size: Float
     let text: String
     let mnemonic: String
+
+    /// Up to two decimals without trailing zeros: 4.65, 4.5, 3.
+    static func format(_ v: Float) -> String {
+        var s = String(format: "%.2f", v)
+        while s.hasSuffix("0") { s.removeLast() }
+        if s.hasSuffix(".") { s.removeLast() }
+        return s
+    }
+
+    /// Parses "4,65" or "4.65", rounded to two decimals.
+    static func parse(_ text: String) -> Float? {
+        let t = text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+        guard let v = Float(t), v.isFinite else { return nil }
+        return (v * 100).rounded() / 100
+    }
 }
+
+let customPixelSizeRange: ClosedRange<Float> = 1.0...30.0
 
 struct AspectRatioInfo {
     var ratio: Float
@@ -119,6 +136,8 @@ struct CropInsets: Equatable, Codable {
 struct CaptureOptions {
     var input: InputKind = .none
     var pixelSizeIndex = 3
+    /// Input > Pixel Size > Custom...: own value (two decimals), used instead of the preset sizes when set.
+    var customPixelSize: Float? = nil
     var dpiScaling = false
     var aspectRatioIndex = 0
     var outputScaleIndex = 0
@@ -138,7 +157,13 @@ struct CaptureOptions {
     var lockedArea: CGRect? = nil
     var paused = false
 
-    var pixelSize: Float { pixelSizes[pixelSizeIndex].size }
+    var pixelSize: Float { customPixelSize ?? pixelSizes[pixelSizeIndex].size }
+
+    /// "3", "4.5", "4.65" - for the title bar and profiles.
+    var pixelSizeMnemonic: String {
+        guard let c = customPixelSize else { return pixelSizes[pixelSizeIndex].mnemonic }
+        return PixelSizeInfo.format(c)
+    }
     var aspectRatio: Float { aspectRatios[aspectRatioIndex].ratio }
     var outputScale: Float { outputScales[outputScaleIndex].scale }
     var frameSkip: Int { frameSkips[frameSkipIndex].skip }

@@ -565,7 +565,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         let aspect = options.aspectRatioIndex == customAspectIndex ? String(format: "%.2f", options.aspectRatio)
             : aspectRatios[options.aspectRatioIndex].mnemonic
         let fps = options.paused ? "paused" : "\(lastFPS.output)fps"
-        window.title = "MacGlass (\(source)\(shader), \(pixelSizes[options.pixelSizeIndex].mnemonic)px, \(scale)%, ~\(aspect), \(fps))"
+        window.title = "MacGlass (\(source)\(shader), \(options.pixelSizeMnemonic)px, \(scale)%, ~\(aspect), \(fps))"
     }
 
     // MARK: - NSWindowDelegate
@@ -765,7 +765,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     func makeProfile() -> Profile {
         var p = Profile()
         p.set("ProfileVersion", "1.1")
-        p.set("PixelSize", pixelSizes[options.pixelSizeIndex].mnemonic)
+        p.set("PixelSize", options.pixelSizeMnemonic)
         p.set("DPIScaling", options.dpiScaling ? "1" : "0")
         if options.aspectRatioIndex == customAspectIndex {
             p.set("AspectRatio", String(options.aspectRatio))
@@ -831,7 +831,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             alert("Could not load the profile", error.localizedDescription)
             return
         }
-        if let v = p["PixelSize"], let i = pixelSizes.firstIndex(where: { $0.mnemonic == v }) { options.pixelSizeIndex = i }
+        if let v = p["PixelSize"] {
+            if let i = pixelSizes.firstIndex(where: { $0.mnemonic == v }) {
+                options.pixelSizeIndex = i
+                options.customPixelSize = nil
+            } else if let c = PixelSizeInfo.parse(v), customPixelSizeRange.contains(c) {
+                options.customPixelSize = c
+            }
+        }
         if let v = p.bool("DPIScaling") { options.dpiScaling = v }
         if let v = p["AspectRatio"] {
             if let i = aspectRatios.firstIndex(where: { $0.mnemonic == v && $0.mnemonic != customMnemonic }) {
@@ -963,6 +970,34 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             options.crop = CropInsets()
         }
         updateRenderParams()
+    }
+
+    func customPixelSizeDialog() {
+        let a = NSAlert()
+        a.messageText = "Custom Pixel Size"
+        a.informativeText = "Captured pixels per pixel of the shader input, with up to two decimals (e.g. 4.65). "
+            + "Allowed: \(PixelSizeInfo.format(customPixelSizeRange.lowerBound)) to \(PixelSizeInfo.format(customPixelSizeRange.upperBound))."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 22))
+        field.stringValue = PixelSizeInfo.format(options.pixelSize)
+        field.placeholderString = "4.65"
+        a.accessoryView = field
+        a.window.initialFirstResponder = field
+        a.addButton(withTitle: "OK")
+        a.addButton(withTitle: "Cancel")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        guard let v = PixelSizeInfo.parse(field.stringValue), customPixelSizeRange.contains(v) else {
+            alert("Invalid pixel size", "Please enter a number from \(PixelSizeInfo.format(customPixelSizeRange.lowerBound)) "
+                  + "to \(PixelSizeInfo.format(customPixelSizeRange.upperBound)), with up to two decimals (e.g. 4.65).")
+            return
+        }
+        if let i = pixelSizes.firstIndex(where: { abs($0.size - v) < 0.001 }) {
+            options.pixelSizeIndex = i
+            options.customPixelSize = nil
+        } else {
+            options.customPixelSize = v
+        }
+        updateRenderParams()
+        updateTitle()
     }
 
     func customAspectDialog() {

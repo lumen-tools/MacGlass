@@ -106,6 +106,7 @@ extension AppController: NSMenuItemValidation {
         add(pixel, "Previous  (o)", #selector(previousPixelSize(_:)))
         add(pixel, "Adjust for Retina Scale", #selector(toggleDPIScaling(_:)))
         for (i, p) in pixelSizes.enumerated() { add(pixel, p.text, #selector(selectPixelSize(_:)), tag: i) }
+        add(pixel, "Custom...", #selector(customPixelSizeMenu(_:)))
         submenu(input, "Pixel Size", pixel)
         add(input, "Crop...", #selector(cropMenu(_:)))
         add(input, "Capture Cursor", #selector(toggleCaptureCursor(_:)))
@@ -256,7 +257,10 @@ extension AppController: NSMenuItemValidation {
             item.title = "Adjust for Retina Scale (\(Int(backingScale * 100))%)"
             on(options.dpiScaling)
             return backingScale != 1
-        case #selector(selectPixelSize(_:)): on(item.tag == options.pixelSizeIndex)
+        case #selector(selectPixelSize(_:)): on(options.customPixelSize == nil && item.tag == options.pixelSizeIndex)
+        case #selector(customPixelSizeMenu(_:)):
+            item.title = options.customPixelSize.map { "Custom (x\(PixelSizeInfo.format($0)))..." } ?? "Custom..."
+            on(options.customPixelSize != nil)
         case #selector(cropMenu(_:)): return !isDesktopInput
         case #selector(toggleCaptureCursor(_:)): on(options.captureCursor)
         case #selector(selectGlass(_:)): on(!options.clone)
@@ -429,13 +433,25 @@ extension AppController: NSMenuItemValidation {
     }
 
     @objc func nextPixelSize(_ sender: Any?) {
-        options.pixelSizeIndex = (options.pixelSizeIndex + 1) % pixelSizes.count
+        if let c = options.customPixelSize {
+            // from a custom size to the next larger preset size
+            options.pixelSizeIndex = pixelSizes.firstIndex { $0.size > c } ?? 0
+            options.customPixelSize = nil
+        } else {
+            options.pixelSizeIndex = (options.pixelSizeIndex + 1) % pixelSizes.count
+        }
         updateRenderParams()
         updateTitle()
     }
 
     @objc func previousPixelSize(_ sender: Any?) {
-        options.pixelSizeIndex = (options.pixelSizeIndex - 1 + pixelSizes.count) % pixelSizes.count
+        if let c = options.customPixelSize {
+            // from a custom size to the next smaller preset size
+            options.pixelSizeIndex = pixelSizes.lastIndex { $0.size < c } ?? (pixelSizes.count - 1)
+            options.customPixelSize = nil
+        } else {
+            options.pixelSizeIndex = (options.pixelSizeIndex - 1 + pixelSizes.count) % pixelSizes.count
+        }
         updateRenderParams()
         updateTitle()
     }
@@ -445,7 +461,10 @@ extension AppController: NSMenuItemValidation {
         updateRenderParams()
     }
 
+    @objc func customPixelSizeMenu(_ sender: Any?) { customPixelSizeDialog() }
+
     @objc func selectPixelSize(_ sender: NSMenuItem) {
+        options.customPixelSize = nil
         options.pixelSizeIndex = sender.tag
         updateRenderParams()
         updateTitle()

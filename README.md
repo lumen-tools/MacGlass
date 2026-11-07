@@ -55,7 +55,7 @@ Global hotkeys (Processing > Global Hotkeys, changeable): ⌃⇧G Fullscreen, �
 
 ### Pixel Size and Bilinear Filter
 
-**Pixel Size** sets how many captured pixels make up one pixel of the shader input. For example, a game shown at 3× needs x3. With **Adjust for Retina Scale**, the size counts in points instead of pixels.
+**Pixel Size** sets how many captured pixels make up one pixel of the shader input. For example, a game shown at 3× needs x3. Besides the preset sizes, **Custom...** takes any value from 1 to 30 with up to two decimals (e.g. 4.65). With **Adjust for Retina Scale**, the size counts in points instead of pixels.
 
 **Bilinear Filter** (Processing) comes from [ShaderGlass-Bilinear](https://github.com/lumen-tools/ShaderGlass-Bilinear). When the captured image is scaled down to the shader input, MacGlass averages the whole area ("footprint") of each source pixel instead of reading a single point. It does this with n × n bilinear taps, where n = 2…8 depending on the scale. On a picture the emulator scaled up without filtering, this gives the same result as "bilinear filtering in the emulator" and removes the mosaic pattern at non-integer pixel sizes. The shader chain itself is unchanged.
 
