@@ -64,7 +64,7 @@ final class FrameSink {
 
 enum CaptureError: LocalizedError {
     case notFound(String)
-    case permission
+    case permission(String)
 
     var errorDescription: String? {
         switch self {
@@ -116,7 +116,7 @@ final class ScreenCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         do {
             content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         } catch {
-            throw CaptureError.permission
+            throw CaptureError.permission(error.localizedDescription)
         }
         guard let display = content.displays.first(where: { $0.displayID == displayID }) ?? content.displays.first else {
             throw CaptureError.notFound("The display")
@@ -137,7 +137,7 @@ final class ScreenCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         do {
             content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         } catch {
-            throw CaptureError.permission
+            throw CaptureError.permission(error.localizedDescription)
         }
         guard let window = content.windows.first(where: { $0.windowID == windowID }) else {
             throw CaptureError.notFound("The window")

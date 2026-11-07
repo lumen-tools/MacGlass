@@ -49,6 +49,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     private var awakeAssertion: IOPMAssertionID = 0
     private var lastChainError: String?
     var waitingForPermission = false
+    var permissionDetail: NSTextField?
     var permissionHint: NSView?
 
     // Menus updated dynamically
@@ -137,6 +138,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             alert("librashader could not be loaded", error + "\n\nShaders are disabled; the captured image is shown without a shader.")
         }
 
+        if !CGPreflightScreenCaptureAccess() {
+            // Once at launch (as in 0.1.0): makes macOS list MacGlass and ask; never repeated on a timer.
+            CGRequestScreenCaptureAccess()
+        }
         if case .none = options.input {
             options.input = .display(window.screen?.displayID ?? CGMainDisplayID())
         }
@@ -223,10 +228,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         title.font = NSFont.boldSystemFont(ofSize: 15)
         title.textColor = .white
         let text = NSTextField(wrappingLabelWithString:
-            "Allow MacGlass in System Settings > Privacy & Security > Screen & System Audio Recording, "
-            + "then quit and reopen MacGlass (or choose \"Quit & Reopen\" if macOS offers it) and click Try Again if needed.\n\n"
-            + "MacGlass is already switched on there? The entry may belong to an older version: remove MacGlass "
-            + "from the list with \"−\", add /Applications/MacGlass.app again with \"+\" and reopen MacGlass.")
+            "MacGlass is already switched on in System Settings? Then the entry belongs to an older MacGlass version. "
+            + "Click Reset Permission, allow MacGlass when macOS asks, and choose \"Quit & Reopen\".\n\n"
+            + "Otherwise allow MacGlass in System Settings > Privacy & Security > Screen & System Audio Recording "
+            + "and reopen it. The menus stay usable meanwhile (e.g. Input > File...).")
         text.textColor = NSColor(white: 0.85, alpha: 1)
         text.alignment = .center
         text.preferredMaxLayoutWidth = 420
@@ -234,10 +239,20 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         button.bezelStyle = .rounded
         let retry = NSButton(title: "Try Again", target: self, action: #selector(retryCapture(_:)))
         retry.bezelStyle = .rounded
-        retry.keyEquivalent = "\r"
-        let buttons = NSStackView(views: [button, retry])
+        let reset = NSButton(title: "Reset Permission", target: self, action: #selector(resetScreenRecordingPermission(_:)))
+        reset.bezelStyle = .rounded
+        reset.keyEquivalent = "\r"
+        reset.toolTip = "Removes MacGlass' Screen Recording entry (also one of an older version) and asks again."
+        let buttons = NSStackView(views: [reset, button, retry])
         buttons.orientation = .horizontal
-        let stack = NSStackView(views: [title, text, buttons])
+        let detail = NSTextField(wrappingLabelWithString: "")
+        detail.textColor = NSColor(white: 0.6, alpha: 1)
+        detail.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        detail.alignment = .center
+        detail.preferredMaxLayoutWidth = 420
+        detail.isHidden = true
+        permissionDetail = detail
+        let stack = NSStackView(views: [title, text, buttons, detail])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 10
@@ -283,9 +298,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                     let texture = try ImageInput.load(url, device: self.device)
                     self.sink.push(texture: texture)
                 }
-            } catch CaptureError.permission {
+            } catch CaptureError.permission(let detail) {
+                NSLog("MacGlass: screen capture refused: \(detail)")
                 self.running = false
-                self.waitForPermission()
+                self.waitForPermission(detail: detail)
             } catch {
                 self.running = false
                 self.alert("Could not start capture", error.localizedDescription)
@@ -304,9 +320,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
     }
 
     /// No Screen Recording access yet: show a hint in the window and start as soon as access is granted.
-    func waitForPermission() {
+    func waitForPermission(detail: String = "") {
         running = false
         waitingForPermission = true
+        permissionDetail?.stringValue = detail.isEmpty ? "" : "macOS: \(detail)"
+        permissionDetail?.isHidden = detail.isEmpty
         setPermissionHint(visible: true)
         updateWindowMode()
         window?.title = "MacGlass (waiting for Screen Recording permission)"
@@ -316,6 +334,35 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         if !visible { waitingForPermission = false }
         permissionHint?.isHidden = !visible
         updateMousePassthrough()
+    }
+
+    /// "Reset Permission": removes the Screen Recording entry of MacGlass (which may belong to an older,
+    /// differently signed version and is then ignored by macOS) and requests access again.
+    @objc func resetScreenRecordingPermission(_ sender: Any?) {
+        let id = Bundle.main.bundleIdentifier ?? "io.github.lumen-tools.MacGlass"
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        p.arguments = ["reset", "ScreenCapture", id]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = pipe
+        var output = ""
+        do {
+            try p.run()
+            p.waitUntilExit()
+            output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        } catch {
+            output = error.localizedDescription
+        }
+        if p.terminationReason == .exit && p.terminationStatus == 0 {
+            // registers the current MacGlass and shows macOS' dialog once
+            CGRequestScreenCaptureAccess()
+            alert("Permission reset", "Now allow MacGlass when macOS asks (or switch it on in System Settings > Privacy & Security > "
+                  + "Screen & System Audio Recording) and choose \"Quit & Reopen\".")
+        } else {
+            alert("Could not reset the permission", output.trimmingCharacters(in: .whitespacesAndNewlines)
+                  + "\n\nRun this in Terminal instead, then reopen MacGlass:\ntccutil reset ScreenCapture \(id)")
+        }
     }
 
     /// "Try Again" in the permission hint. MacGlass never retries on its own: every attempt without
