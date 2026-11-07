@@ -16,7 +16,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks" "$APP/Contents/Resources/Licenses"
 cp "$BIN/MacGlass" "$APP/Contents/MacOS/MacGlass"
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@BUILD@/${GITHUB_RUN_NUMBER:-1}/g" Resources/Info.plist > "$APP/Contents/Info.plist"
-cp Resources/AppIcon.icns "$APP/Contents/Resources/" 2>/dev/null || true
+swift scripts/make-icon.swift "$ROOT/build/AppIcon.iconset" && iconutil -c icns "$ROOT/build/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns" \
+  || echo "warning: app icon could not be created"
 cp "$LIBRA/librashader.dylib" "$APP/Contents/Frameworks/"
 cp -R "$SHADERS" "$APP/Contents/Resources/Shaders"
 cp LICENSE "$APP/Contents/Resources/Licenses/LICENSE-MacGlass.txt"
