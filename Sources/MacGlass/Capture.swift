@@ -103,8 +103,10 @@ final class ScreenCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         c.height = max(1, height)
         c.pixelFormat = kCVPixelFormatType_32BGRA
         c.showsCursor = showsCursor
-        c.queueDepth = 5
-        c.minimumFrameInterval = maxRate ? CMTime(value: 1, timescale: 240) : CMTime(value: 1, timescale: 60)
+        c.queueDepth = 3 // the minimum: fewer buffered frames = lower latency
+        // Capture at the display refresh rate (120 on ProMotion displays); Max Capture Rate = as fast as possible.
+        let fps = max(60, NSScreen.screens.map { $0.maximumFramesPerSecond }.max() ?? 60)
+        c.minimumFrameInterval = maxRate ? CMTime(value: 1, timescale: 240) : CMTime(value: 1, timescale: CMTimeScale(fps))
         c.capturesAudio = false
         return c
     }

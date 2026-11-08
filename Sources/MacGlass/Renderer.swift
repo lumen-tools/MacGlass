@@ -78,6 +78,8 @@ final class Renderer {
     private var lastInputSerial: UInt64 = 0
     private var lastRenderTime = CACurrentMediaTime()
     private var busy = false // touched only under `lock`
+    private var pending = false // a tick arrived while rendering (under `lock`)
+    private var lastInputTime = CACurrentMediaTime() // under `lock`
     private var lastGeometry: FrameGeometry?
     private var lastDrawableSize = CGSize.zero
 
@@ -133,8 +135,13 @@ final class Renderer {
     func submit(frame: CaptureFrame?) {
         lock.lock()
         latestFrame = frame
-        if frame != nil { inputFrames += 1 }
+        if frame != nil {
+            inputFrames += 1
+            lastInputTime = CACurrentMediaTime()
+        }
         lock.unlock()
+        // Render a new capture right away instead of waiting for the next display refresh (lower latency).
+        if frame != nil { tick() }
     }
 
     func takeStatistics() -> (input: Int, output: Int) {
@@ -196,19 +203,29 @@ final class Renderer {
     }
 
     /// Called from the display link thread.
+    /// Called for every new capture frame and from the display link.
     func tick() {
         lock.lock()
         if busy {
+            pending = true // render again right after the current frame, so no new capture is skipped
             lock.unlock()
             return
         }
         busy = true
         lock.unlock()
         renderQueue.async { [self] in
-            autoreleasepool { renderFrame() }
-            lock.lock()
-            busy = false
-            lock.unlock()
+            while true {
+                autoreleasepool { renderFrame() }
+                lock.lock()
+                if pending {
+                    pending = false
+                    lock.unlock()
+                    continue
+                }
+                busy = false
+                lock.unlock()
+                break
+            }
         }
     }
 
@@ -318,14 +335,26 @@ final class Renderer {
         guard let layer, let frame else { snapshot?(nil); return }
         if p.paused && snapshot == nil { return }
 
-        // Logical frames at 60 fps (as ShaderGlass); FPS menu = render every n-th frame.
+        // Pacing: every new capture frame is rendered at once. Without new input (static picture), the
+        // display link keeps animated shaders running at the display refresh rate.
+        // FPS menu (frame skip): as ShaderGlass, render every n-th logical frame of 60 fps.
         let now = CACurrentMediaTime()
         let logical = Int((now - startTime) * 60.0)
+        lock.lock()
+        let sinceInput = now - lastInputTime
+        lock.unlock()
         if snapshot == nil {
-            if logical == lastLogicalFrame { return }
-            if p.frameSkip > 0 && logical % (p.frameSkip + 1) != 0 { return }
+            if p.frameSkip > 0 {
+                if logical == lastLogicalFrame { return }
+                if logical % (p.frameSkip + 1) != 0 { return }
+            } else {
+                let newInput = frame.serial != lastInputSerial
+                let idleAnimation = sinceInput > 0.025 && now - lastRenderTime > 0.006
+                if !newInput && !idleAnimation { return }
+            }
         }
         lastLogicalFrame = logical
+        lastInputSerial = frame.serial
 
         let drawableSize = layer.drawableSize
         let dw = Int(drawableSize.width), dh = Int(drawableSize.height)
@@ -375,7 +404,9 @@ final class Renderer {
                 let handler = onChainError
                 DispatchQueue.main.async { handler?(e) }
             }
-            frameCount += 1
+            // FrameCount advances at 60 per second whatever the render rate (as ShaderGlass' logical frames),
+            // so animated shaders keep their speed on 120 Hz displays.
+            frameCount = UInt(max(0, logical))
         }
         lastRenderTime = now
 
