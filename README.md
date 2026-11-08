@@ -35,11 +35,11 @@ ScreenCaptureKit ─► preprocess (crop, Pixel Size, Bilinear Filter) ─► li
 
 ## Shaders
 
-Shader > Choose from Library... (⌘L) opens a browser with three top folders:
+Shader > Choose from Library... (⌘L) opens a browser with three top folders (as in ShaderGlass, imported shaders appear under **Imported**):
 
 - **RetroArch:** the current [libretro slang-shaders](https://github.com/libretro/slang-shaders), including Mega Bezel. HDR shaders, test patterns and source-only folders are hidden.
 - **Retro_Crisis:** the newest release of [Retro Crisis GDV-NTSC](https://github.com/RetroCrisis/Retro-Crisis-GDV-NTSC) (GPL-3).
-- **Custom_Shader:** your own presets in `~/Library/Application Support/MacGlass/Custom_Shader`. Use Shader > Import custom... for a `.slangp` or `.slang` (it is copied with everything it references), or copy folders there yourself (Shader > Open Custom_Shader Folder, then Rescan in the browser).
+- **Imported:** shaders imported in this session, as in ShaderGlass. Shader > Import custom... loads a `.slangp` or `.slang` from where it is; nothing is copied. Shader > Recent imports remembers the last 20 imports (entries that can no longer be loaded are removed), and profiles store the path. To get rid of an imported shader, just stop using it or delete the file yourself.
 
 Presets that point to RetroArch's shader folder (`shaders_slang/...`), such as presets saved in RetroArch or by Retro Crisis, find those files in the bundled libretro shaders automatically. Windows paths and letter case are handled too.
 

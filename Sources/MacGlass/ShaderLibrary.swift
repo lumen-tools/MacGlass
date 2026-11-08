@@ -47,7 +47,8 @@ enum ShaderLibraryError: LocalizedError {
 final class ShaderLibrary {
     static let retroArchName = "RetroArch"
     static let retroCrisisName = "Retro_Crisis"
-    static let customName = "Custom_Shader"
+    static let customName = "Imported" // as in ShaderGlass
+    static let legacyCustomName = "Custom_Shader" // MacGlass 0.1.0-0.1.8
 
     /// Folders that only hold shader sources, old variants or need HDR output (as in DeckGlass;
     /// Mega Bezel stays visible because librashader runs it).
@@ -58,7 +59,9 @@ final class ShaderLibrary {
     let bundledRoot: URL
     let retroArchRoot: URL
     let retroCrisisRoot: URL
-    let customRoot: URL
+    /// Imported shaders (Shader > Import custom...), shown in the "Imported" folder. Like ShaderGlass,
+    /// MacGlass does not copy them: they are loaded from where they are.
+    private(set) var imports: [String] = []
     /// Where resolved copies of presets are written.
     let resolvedRoot: URL
 
@@ -79,33 +82,47 @@ final class ShaderLibrary {
         return base.appendingPathComponent("MacGlass", isDirectory: true)
     }
 
-    init(bundledRoot: URL = ShaderLibrary.defaultBundledRoot(), customRoot: URL? = nil) {
+    /// Folder that MacGlass 0.1.0-0.1.8 copied imports into (moved to the Trash on start since 0.1.9).
+    static var legacyCustomRoot: URL { appSupportDir().appendingPathComponent(legacyCustomName, isDirectory: true) }
+
+    init(bundledRoot: URL = ShaderLibrary.defaultBundledRoot()) {
         self.bundledRoot = bundledRoot
         // Same layout as RetroArch / DeckGlass, so Retro Crisis' "../../../shaders_slang/..." paths resolve as written.
         retroArchRoot = bundledRoot.appendingPathComponent("shaders_slang", isDirectory: true)
         retroCrisisRoot = bundledRoot.appendingPathComponent("rc/retro crisis", isDirectory: true)
-        self.customRoot = customRoot ?? ShaderLibrary.appSupportDir().appendingPathComponent(ShaderLibrary.customName, isDirectory: true)
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         resolvedRoot = caches.appendingPathComponent("MacGlass/resolved", isDirectory: true)
-        try? FileManager.default.createDirectory(at: self.customRoot, withIntermediateDirectories: true)
     }
 
     var libraries: [(String, URL)] {
         [(ShaderLibrary.retroArchName, retroArchRoot),
-         (ShaderLibrary.retroCrisisName, retroCrisisRoot),
-         (ShaderLibrary.customName, customRoot)]
+         (ShaderLibrary.retroCrisisName, retroCrisisRoot)]
     }
 
     // MARK: - Scanning
 
-    /// Rebuilds the browser tree (call again after imports or when the custom folder changed).
+    /// "Imported" lists what was imported in this session (Import custom..., Recent imports, profiles),
+    /// as in ShaderGlass' browser.
+    func addImport(_ path: String) {
+        guard !imports.contains(path) else { return }
+        imports.append(path)
+        rescan()
+    }
+
+    /// Rebuilds the browser tree.
     func rescan() {
         let top = ShaderFolder(name: "", path: "")
         for (name, url) in libraries {
             let node = scan(library: name, root: url, rel: "") ?? ShaderFolder(name: name, path: name)
             top.folders.append(node)
         }
+        let custom = ShaderFolder(name: ShaderLibrary.customName, path: ShaderLibrary.customName)
+        custom.presets = imports.filter { FileManager.default.fileExists(atPath: $0) }.map {
+            let url = URL(fileURLWithPath: $0)
+            return PresetEntry(key: $0, label: url.deletingPathExtension().lastPathComponent, url: url)
+        }
+        top.folders.append(custom)
         root = top
         allPresets = top.allPresets()
         byKey = Dictionary(allPresets.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
@@ -303,13 +320,21 @@ final class ShaderLibrary {
         guard FileManager.default.fileExists(atPath: preset.path) else {
             throw ShaderLibraryError.message("Preset not found: \(preset.path)")
         }
-        if resolvesAsWritten(preset) { return preset }
+        let isShader = preset.pathExtension.lowercased() == "slang"
+        if !isShader && resolvesAsWritten(preset) { return preset }
         let session = resolvedRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
         // Remove older resolved copies.
         if let old = try? FileManager.default.contentsOfDirectory(at: resolvedRoot, includingPropertiesForKeys: nil) {
             for o in old { try? FileManager.default.removeItem(at: o) }
         }
         try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true)
+        if isShader {
+            // A single imported .slang runs as a one-pass preset (as in ShaderGlass), written to the cache only.
+            let wrapper = session.appendingPathComponent(preset.deletingPathExtension().lastPathComponent + ".slangp")
+            let text = "shaders = 1\nshader0 = \"\(preset.path)\"\nfilter_linear0 = false\nscale_type0 = viewport\n"
+            try text.write(to: wrapper, atomically: true, encoding: .utf8)
+            return wrapper
+        }
         var counter = 0
         return try rewrite(preset, into: session, counter: &counter, depth: 0)
     }
@@ -342,89 +367,5 @@ final class ShaderLibrary {
         let dest = dir.appendingPathComponent(name)
         try out.joined(separator: "\n").write(to: dest, atomically: true, encoding: .utf8)
         return dest
-    }
-
-    // MARK: - Import
-
-    /// Copies a .slangp or .slang (with everything it references that is not part of the bundled
-    /// libretro shaders) into the Custom_Shader folder and returns the imported preset.
-    func importShader(from source: URL) throws -> PresetEntry {
-        let ext = source.pathExtension.lowercased()
-        guard ext == "slangp" || ext == "slang" else {
-            throw ShaderLibraryError.message("Only .slangp and .slang files can be imported.")
-        }
-        var files = Set<String>()
-        try collect(source, ext: ext, into: &files, depth: 0)
-        let paths = files.sorted()
-        let commonDir = ShaderLibrary.commonDirectory(paths)
-
-        let stem = source.deletingPathExtension().lastPathComponent
-        var destRoot = customRoot.appendingPathComponent(stem, isDirectory: true)
-        var n = 2
-        while FileManager.default.fileExists(atPath: destRoot.path) {
-            destRoot = customRoot.appendingPathComponent("\(stem) \(n)", isDirectory: true)
-            n += 1
-        }
-        for p in paths {
-            let rel = String(p.dropFirst(commonDir.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            let dest = destRoot.appendingPathComponent(rel)
-            try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: URL(fileURLWithPath: p), to: dest)
-        }
-        let srcRel = String(source.standardizedFileURL.path.dropFirst(commonDir.count))
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        var presetURL = destRoot.appendingPathComponent(srcRel)
-        if ext == "slang" {
-            // A single shader becomes a one-pass preset next to it.
-            let preset = presetURL.deletingPathExtension().appendingPathExtension("slangp")
-            let text = "shaders = 1\nshader0 = \"\(presetURL.lastPathComponent)\"\nfilter_linear0 = false\nscale_type0 = viewport\n"
-            try text.write(to: preset, atomically: true, encoding: .utf8)
-            presetURL = preset
-        }
-        rescan()
-        return preset(forFile: presetURL)
-    }
-
-    private func collect(_ url: URL, ext: String, into files: inout Set<String>, depth: Int) throws {
-        let path = url.standardizedFileURL.path
-        guard depth < 32, !files.contains(path) else { return }
-        // Files of the bundled libraries are found at runtime, no need to copy them.
-        if path.hasPrefix(bundledRoot.standardizedFileURL.path + "/") { return }
-        files.insert(path)
-        let dir = url.deletingLastPathComponent()
-        switch ext {
-        case "slangp":
-            for line in try ShaderLibrary.readLines(url) {
-                if let ref = ShaderLibrary.parseReference(line), let t = resolve(ref, relativeTo: dir) {
-                    try collect(t, ext: "slangp", into: &files, depth: depth + 1)
-                } else if let pl = ShaderLibrary.parsePathLine(line), let t = resolve(pl.value, relativeTo: dir) {
-                    try collect(t, ext: t.pathExtension.lowercased(), into: &files, depth: depth + 1)
-                }
-            }
-        case "slang", "h", "inc", "glsl":
-            for line in try ShaderLibrary.readLines(url) {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                guard trimmed.hasPrefix("#include") else { continue }
-                let parts = trimmed.components(separatedBy: "\"")
-                guard parts.count >= 2 else { continue }
-                if let t = resolve(parts[1], relativeTo: dir) {
-                    try collect(t, ext: "slang", into: &files, depth: depth + 1)
-                }
-            }
-        default:
-            break
-        }
-    }
-
-    static func commonDirectory(_ paths: [String]) -> String {
-        guard var common = paths.first.map({ ($0 as NSString).deletingLastPathComponent }) else { return "/" }
-        for p in paths.dropFirst() {
-            let dir = (p as NSString).deletingLastPathComponent
-            while !(dir == common || dir.hasPrefix(common.hasSuffix("/") ? common : common + "/")) {
-                common = (common as NSString).deletingLastPathComponent
-                if common == "/" || common.isEmpty { return "/" }
-            }
-        }
-        return common
     }
 }

@@ -118,13 +118,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         HotkeyManager.shared.register()
         updateAwake()
 
+        AppController.migrateLegacyCustomFolder()
         library.rescan()
         if FileManager.default.fileExists(atPath: AppController.defaultProfileURL.path) {
             loadProfile(AppController.defaultProfileURL, startCapture: false)
         } else {
             let key = defaults.string(forKey: "Last Preset") ?? defaultPresetKey
             let values = (defaults.dictionary(forKey: "Last Params") as? [String: Double])?.mapValues { Float($0) } ?? [:]
-            if let p = library.preset(forKey: key) ?? library.preset(forKey: defaultPresetKey) ?? library.allPresets.first {
+            if key.hasPrefix("/"), FileManager.default.fileExists(atPath: key) {
+                importCustom(URL(fileURLWithPath: key), values: values) // last shader was an imported one
+            } else if let p = library.preset(forKey: key) ?? library.preset(forKey: defaultPresetKey) ?? library.allPresets.first {
                 loadPreset(p, values: key == p.key ? values : [:])
             }
         }
@@ -641,9 +644,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
 
     // MARK: - Shaders
 
-    func loadPreset(_ preset: PresetEntry, values: [String: Float] = [:]) {
+    func loadPreset(_ preset: PresetEntry, values: [String: Float] = [:], completion: ((Bool) -> Void)? = nil) {
         guard MGLibrashader.isLoaded() else {
             currentPreset = preset
+            completion?(FileManager.default.fileExists(atPath: preset.url.path))
             return
         }
         let path: URL
@@ -651,6 +655,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             path = try library.loadablePath(for: preset.url)
         } catch {
             alert("Could not load \(preset.name)", error.localizedDescription)
+            completion?(false)
             return
         }
         loadingPreset = preset.name
@@ -668,8 +673,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
                 self.defaults.set(preset.key, forKey: "Last Preset")
                 self.saveParams()
                 self.paramsWindow?.show(presetName: preset.name, parameters: params, values: self.paramValues)
+                completion?(true)
             case .failure(let error):
                 self.alert("Could not load \(preset.name)", error.localizedDescription)
+                completion?(false)
             }
             self.browser?.select(key: self.currentPreset?.key ?? "")
             self.updateTitle()
@@ -728,27 +735,71 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         paramsWindow?.showWindow(nil)
     }
 
+    static let maxRecentImports = 20 // MAX_RECENT_IMPORTS in ShaderGlass
+
     func importCustom() {
         let panel = NSOpenPanel()
-        panel.title = "Import custom shader"
-        panel.message = "Choose a RetroArch preset (.slangp) or shader (.slang). It is copied into the Custom_Shader folder."
+        panel.title = "Import custom"
+        panel.message = "Slang Profiles or Shaders (*.slangp, *.slang)"
         panel.allowedContentTypes = ["slangp", "slang"].compactMap { UTType(filenameExtension: $0) }
         panel.allowsOtherFileTypes = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         importCustom(url)
     }
 
-    func importCustom(_ url: URL) {
-        do {
-            let preset = try library.importShader(from: url)
-            var recent = defaults.stringArray(forKey: "Recent Imports") ?? []
-            recent.removeAll { $0 == preset.key }
-            recent.insert(preset.key, at: 0)
-            defaults.set(Array(recent.prefix(10)), forKey: "Recent Imports")
-            browser?.reload(selecting: preset.key)
-            loadPreset(preset)
-        } catch {
-            alert("Import failed", error.localizedDescription)
+    /// Imports a .slangp or .slang like ShaderGlass: nothing is copied, the file is loaded from where it is,
+    /// remembered in Recent imports and listed under "Imported" in the browser for this session.
+    func importCustom(_ url: URL, values: [String: Float] = [:]) {
+        let path = url.standardizedFileURL.path
+        addRecentImport(path)
+        let preset = library.preset(forFile: url)
+        loadPreset(preset, values: values) { [weak self] ok in
+            guard let self else { return }
+            if ok {
+                self.library.addImport(path)
+                self.browser?.reload(selecting: preset.key)
+            } else {
+                self.removeRecentImport(path)
+            }
+        }
+    }
+
+    var recentImports: [String] { defaults.stringArray(forKey: "Recent Imports") ?? [] }
+
+    func addRecentImport(_ path: String) {
+        guard path.hasPrefix("/") else { return } // don't store relative paths
+        var recent = recentImports
+        recent.removeAll { $0 == path }
+        recent.insert(path, at: 0)
+        defaults.set(Array(recent.prefix(AppController.maxRecentImports)), forKey: "Recent Imports")
+    }
+
+    func removeRecentImport(_ path: String) {
+        defaults.set(recentImports.filter { $0 != path }, forKey: "Recent Imports")
+    }
+
+    /// MacGlass 0.1.0-0.1.8 copied imports into Application Support/MacGlass/Custom_Shader. That folder
+    /// is moved to the Trash, and settings pointing into it are dropped.
+    static func migrateLegacyCustomFolder() {
+        let d = UserDefaults.standard
+        let legacy = ShaderLibrary.legacyCustomRoot
+        if FileManager.default.fileExists(atPath: legacy.path) {
+            do {
+                try FileManager.default.trashItem(at: legacy, resultingItemURL: nil)
+                NSLog("MacGlass: moved the old Custom_Shader folder to the Trash")
+            } catch {
+                NSLog("MacGlass: could not move \(legacy.path) to the Trash: \(error)")
+            }
+        }
+        let prefix = ShaderLibrary.legacyCustomName + "/"
+        let legacyPath = legacy.standardizedFileURL.path + "/"
+        func isLegacy(_ s: String) -> Bool { s.hasPrefix(prefix) || s.hasPrefix(legacyPath) }
+        if let recent = d.stringArray(forKey: "Recent Imports") {
+            d.set(recent.filter { $0.hasPrefix("/") && !isLegacy($0) }, forKey: "Recent Imports")
+        }
+        if let last = d.string(forKey: "Last Preset"), isLegacy(last) {
+            d.removeObject(forKey: "Last Preset")
+            d.removeObject(forKey: "Last Params")
         }
     }
 
@@ -959,8 +1010,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         }
         var preset: PresetEntry?
         if let key = p["Shader"] { preset = library.preset(forKey: key) }
-        if preset == nil, let path = p["ShaderPath"] { preset = library.preset(forFile: URL(fileURLWithPath: path)) }
-        if let preset { loadPreset(preset, values: values) }
+        if let preset {
+            loadPreset(preset, values: values)
+        } else if let path = p["ShaderPath"] {
+            importCustom(URL(fileURLWithPath: path), values: values) // as ShaderGlass: profiles re-import the file
+        } else if p["Shader"] != nil, let fallback = library.preset(forKey: defaultPresetKey) {
+            loadPreset(fallback) // e.g. a preset of the old Custom_Shader folder
+        }
 
         addRecentProfile(url)
         updateWindowMode()

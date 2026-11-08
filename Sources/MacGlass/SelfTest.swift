@@ -32,7 +32,7 @@ enum SelfTest {
 
         // Libraries
         let customRoot = FileManager.default.temporaryDirectory.appendingPathComponent("MacGlass-selftest-custom-\(getpid())")
-        let library = ShaderLibrary(customRoot: customRoot)
+        let library = ShaderLibrary()
         library.rescan()
         for folder in library.root.folders {
             note("library \(folder.name): \(folder.allPresets().count) presets")
@@ -41,7 +41,7 @@ enum SelfTest {
         let rcCount = library.root.folders.first { $0.name == ShaderLibrary.retroCrisisName }?.allPresets().count ?? 0
         check(raCount > 100, "RetroArch library has presets (\(raCount))")
         check(rcCount > 0, "Retro_Crisis library has presets (\(rcCount))")
-        check(library.root.folders.map(\.name) == ["RetroArch", "Retro_Crisis", "Custom_Shader"], "browser shows the three libraries")
+        check(library.root.folders.map(\.name) == ["RetroArch", "Retro_Crisis", "Imported"], "browser shows RetroArch, Retro_Crisis and Imported")
 
         // Path resolution: a custom preset pointing at RetroArch's shader folder.
         let custom = customRoot.appendingPathComponent("test")
@@ -57,12 +57,31 @@ enum SelfTest {
         shader0 = "C:\\RetroArch\\shaders\\shaders_slang\\crt\\shaders\\crt-geom.slang"
         filter_linear0 = false
         """.write(to: customPasses, atomically: true, encoding: .utf8)
-        library.rescan()
+        // Imports are not copied (as in ShaderGlass): loaded from where they are, listed under "Imported".
+        let stock = library.retroArchRoot.appendingPathComponent("stock.slang")
+        for url in [customPreset, customPasses, stock] { library.addImport(url.path) }
+        let imported = library.root.folders.first { $0.name == ShaderLibrary.customName }?.presets.count ?? 0
+        check(imported == 3, "imported shaders are listed under Imported (\(imported))")
+        // Update from 0.1.0-0.1.8 (only on CI: touches the real Application Support folder and settings).
+        if ProcessInfo.processInfo.environment["CI"] == "true" {
+            let legacy = ShaderLibrary.legacyCustomRoot
+            try? FileManager.default.createDirectory(at: legacy.appendingPathComponent("old"), withIntermediateDirectories: true)
+            try? "shaders = 0\n".write(to: legacy.appendingPathComponent("old/old.slangp"), atomically: true, encoding: .utf8)
+            UserDefaults.standard.set(["Custom_Shader/old/old.slangp", legacy.path + "/old/old.slangp", stock.path],
+                                      forKey: "Recent Imports")
+            UserDefaults.standard.set("Custom_Shader/old/old.slangp", forKey: "Last Preset")
+            AppController.migrateLegacyCustomFolder()
+            check(!FileManager.default.fileExists(atPath: legacy.path), "old Custom_Shader folder is removed (moved to the Trash)")
+            check(UserDefaults.standard.stringArray(forKey: "Recent Imports") == [stock.path], "old Custom_Shader entries are dropped from Recent imports")
+            check(UserDefaults.standard.string(forKey: "Last Preset") == nil, "last preset in the old folder falls back to the default")
+            UserDefaults.standard.removeObject(forKey: "Recent Imports")
+        }
         var customEntries: [PresetEntry] = []
-        for url in [customPreset, customPasses] {
+        for url in [customPreset, customPasses, stock] {
             do {
                 let resolved = try library.loadablePath(for: url)
-                check(resolved != url, "resolve shaders_slang paths in \(url.lastPathComponent)")
+                check(resolved != url, url.pathExtension == "slang" ? "single .slang runs as a one-pass preset"
+                      : "resolve shaders_slang paths in \(url.lastPathComponent)")
                 customEntries.append(library.preset(forFile: url))
             } catch {
                 check(false, "resolve \(url.lastPathComponent): \(error.localizedDescription)")

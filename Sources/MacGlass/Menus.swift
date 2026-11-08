@@ -156,7 +156,6 @@ extension AppController: NSMenuItemValidation {
         add(shader, "Import custom...", #selector(importMenu(_:)))
         recentImportsMenu.delegate = self
         submenu(shader, "Recent imports", recentImportsMenu)
-        add(shader, "Open Custom_Shader Folder", #selector(openCustomFolder(_:)))
         shader.addItem(.separator())
         add(shader, "Parameters...", #selector(parametersMenu(_:)), key: "k", mods: [.command])
         submenu(main, "Shader", shader)
@@ -219,12 +218,11 @@ extension AppController: NSMenuItemValidation {
                 item.toolTip = path
             }
         } else if menu === recentImportsMenu {
-            let recent = defaults.stringArray(forKey: "Recent Imports") ?? []
+            let recent = recentImports
             if recent.isEmpty { disabled(menu, "None") }
-            for key in recent {
-                let item = add(menu, (key as NSString).lastPathComponent, #selector(openRecentImport(_:)))
-                item.representedObject = key
-                item.toolTip = key
+            for path in recent {
+                let item = add(menu, path, #selector(openRecentImport(_:)))
+                item.representedObject = path
             }
         } else if menu === hotkeysMenu {
             add(menu, "Enable", #selector(toggleHotkeys(_:)))
@@ -572,15 +570,8 @@ extension AppController: NSMenuItemValidation {
     @objc func importMenu(_ sender: Any?) { importCustom() }
 
     @objc func openRecentImport(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        library.rescan()
-        if let p = library.preset(forKey: key) { loadPreset(p) } else {
-            alert("Preset not found", "\(key) no longer exists in the Custom_Shader folder.")
-        }
-    }
-
-    @objc func openCustomFolder(_ sender: Any?) {
-        NSWorkspace.shared.open(library.customRoot)
+        guard let path = sender.representedObject as? String else { return }
+        importCustom(URL(fileURLWithPath: path)) // removed from the list if it can no longer be loaded
     }
 
     @objc func parametersMenu(_ sender: Any?) { showParameters() }

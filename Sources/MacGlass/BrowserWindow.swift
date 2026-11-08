@@ -48,9 +48,7 @@ final class BrowserWindowController: NSWindowController, NSOutlineViewDataSource
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
         let importButton = NSButton(title: "Import custom...", target: self, action: #selector(importClicked))
-        let folderButton = NSButton(title: "Open Custom_Shader Folder", target: self, action: #selector(openFolder))
-        let rescanButton = NSButton(title: "Rescan", target: self, action: #selector(rescan))
-        let buttons = NSStackView(views: [importButton, folderButton, rescanButton])
+        let buttons = NSStackView(views: [importButton])
         buttons.orientation = .horizontal
         buttons.translatesAutoresizingMaskIntoConstraints = false
 
@@ -116,14 +114,6 @@ final class BrowserWindowController: NSWindowController, NSOutlineViewDataSource
 
     @objc private func importClicked() { onImport?() }
 
-    @objc private func openFolder() {
-        NSWorkspace.shared.open(library.customRoot)
-    }
-
-    @objc private func rescan() {
-        library.rescan()
-        reload(selecting: nil)
-    }
 
     func controlTextDidChange(_ obj: Notification) {
         updateMatches()
