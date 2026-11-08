@@ -1,5 +1,7 @@
 // MacGlass - menu bar, modelled on ShaderGlass' menus (Processing, Input, Output, Shader, Help).
 // SPDX-License-Identifier: GPL-3.0-only
+// Portions derived from ShaderGlass (https://github.com/mausimus/ShaderGlass), Copyright (C) 2021-2025 mausimus, GPL-3.0.
+// MacGlass is an independent, unofficial project and is not affiliated with ShaderGlass.
 import AppKit
 import AVFoundation
 import Metal
@@ -162,7 +164,7 @@ extension AppController: NSMenuItemValidation {
         // Help
         let help = NSMenu(title: "Help")
         disabled(help, "MacGlass v\(appVersion)")
-        disabled(help, "Based on ShaderGlass by mausimus")
+        disabled(help, "Unofficial, based on ShaderGlass by mausimus")
         add(help, "github.com/lumen-tools/MacGlass", #selector(openProject(_:)))
         add(help, "Online Manual", #selector(openManual(_:)))
         submenu(main, "Help", help)

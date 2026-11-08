@@ -2,7 +2,9 @@
 
 > **Early release (0.x):** expect rough edges and please report problems via GitHub issues.
 
-RetroArch slang shaders over any Mac window or the whole desktop, in real time: CRT, scanlines, NTSC, handheld LCDs and more. It works for every game and emulator, not just inside RetroArch. MacGlass is a native macOS take on [ShaderGlass](https://github.com/mausimus/ShaderGlass) for Windows, built with Swift, Metal, ScreenCaptureKit and [librashader](https://github.com/SnowflakePowered/librashader).
+RetroArch slang shaders over any Mac window or the whole desktop, in real time: CRT, scanlines, NTSC, handheld LCDs and more. It works for every game and emulator, not just inside RetroArch. MacGlass is an independent macOS app modelled on [ShaderGlass](https://github.com/mausimus/ShaderGlass) for Windows, built with Swift, Metal, ScreenCaptureKit and [librashader](https://github.com/SnowflakePowered/librashader).
+
+> **Unofficial:** MacGlass is not ShaderGlass and is not affiliated with or endorsed by ShaderGlass or its author mausimus. Please report MacGlass problems only here, never to ShaderGlass.
 
 ## Download
 
@@ -61,7 +63,7 @@ Global hotkeys (Processing > Global Hotkeys, changeable): ⌃⇧G Fullscreen, �
 
 **Pixel Size** sets how many captured pixels make up one pixel of the shader input. For example, a game shown at 3× needs x3. Besides the preset sizes, **Custom...** takes any value from 1 to 30 with up to two decimals (e.g. 4.65). With **Adjust for Retina Scale**, the size counts in points instead of pixels.
 
-**Bilinear Filter** (Processing) comes from [ShaderGlass-Bilinear](https://github.com/lumen-tools/ShaderGlass-Bilinear). When the captured image is scaled down to the shader input, MacGlass averages the whole area ("footprint") of each source pixel instead of reading a single point. It does this with n × n bilinear taps, where n = 2…8 depending on the scale. On a picture the emulator scaled up without filtering, this gives the same result as "bilinear filtering in the emulator" and removes the mosaic pattern at non-integer pixel sizes. The shader chain itself is unchanged.
+**Bilinear Filter** (Processing): when the captured image is scaled down to the shader input, MacGlass averages the whole area ("footprint") of each source pixel instead of reading a single point. It does this with n × n bilinear taps, where n = 2…8 depending on the scale. On a picture the emulator scaled up without filtering, this gives the same result as "bilinear filtering in the emulator" and removes the mosaic pattern at non-integer pixel sizes. The shader chain itself is unchanged.
 
 ## Limitations
 
@@ -87,12 +89,12 @@ GitHub Actions (`.github/workflows/build.yml`) builds and tests every push on a 
 
 ## Credits
 
-- [ShaderGlass](https://github.com/mausimus/ShaderGlass) by mausimus: the original for Windows, its menus and options.
+- [ShaderGlass](https://github.com/mausimus/ShaderGlass) by mausimus (GPL-3.0): the original for Windows. MacGlass follows its menus and options; the option tables and parts of the processing logic are derived from ShaderGlass, Copyright (C) 2021-2025 mausimus.
 - [librashader](https://github.com/SnowflakePowered/librashader) by Ronny Chan (MPL-2.0 / GPL-3.0): shader runtime.
 - [libretro slang-shaders](https://github.com/libretro/slang-shaders) and [Retro Crisis GDV-NTSC](https://github.com/RetroCrisis/Retro-Crisis-GDV-NTSC): the shaders, licensed by their authors.
 - [DeckGlass](https://github.com/lumen-tools/DeckGlass) and [RetroVisor](https://github.com/dirkwhoffmann/RetroVisor) for ideas on the shader browser, path resolution and capture.
 
-Not affiliated with libretro, RetroArch or Retro Crisis.
+Not affiliated with ShaderGlass, libretro, RetroArch or Retro Crisis. MacGlass was developed with the help of Claude (AI).
 
 ## License
 

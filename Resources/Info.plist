@@ -33,6 +33,6 @@
 	<key>NSCameraUsageDescription</key>
 	<string>MacGlass can apply shaders to the image of a capture device (Input &gt; Device).</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>GPL-3.0. Based on ShaderGlass by mausimus. Uses librashader.</string>
+	<string>GPL-3.0. Unofficial; portions derived from ShaderGlass, (C) mausimus. Uses librashader.</string>
 </dict>
 </plist>

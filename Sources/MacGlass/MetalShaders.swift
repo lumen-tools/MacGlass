@@ -1,5 +1,7 @@
 // MacGlass - built-in Metal shaders (compiled at runtime).
 // SPDX-License-Identifier: GPL-3.0-only
+// Portions derived from ShaderGlass (https://github.com/mausimus/ShaderGlass), Copyright (C) 2021-2025 mausimus, GPL-3.0.
+// MacGlass is an independent, unofficial project and is not affiliated with ShaderGlass.
 
 let builtinMetalSource = #"""
 #include <metal_stdlib>
@@ -38,7 +40,7 @@ fragment float4 copy_fragment(VOut in [[stage_in]],
     return float4(src.sample(smp, in.uv).rgb, 1.0);
 }
 
-// Bilinear Filter (port of ShaderGlass-Bilinear's footprint pixel shader):
+// Bilinear Filter (footprint-averaging downscale, as in lumen-tools' DeckGlass):
 // when the captured image is scaled down to the shader input (Pixel Size), average the whole
 // screen area ("footprint") of each source pixel, centred on it, instead of reading a single point.
 // n x n bilinear taps (n = 2..8 depending on the scale) cover the footprint.

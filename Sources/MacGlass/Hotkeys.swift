@@ -1,5 +1,7 @@
 // MacGlass - global hotkeys (Processing > Global Hotkeys), via Carbon RegisterEventHotKey.
 // SPDX-License-Identifier: GPL-3.0-only
+// Portions derived from ShaderGlass (https://github.com/mausimus/ShaderGlass), Copyright (C) 2021-2025 mausimus, GPL-3.0.
+// MacGlass is an independent, unofficial project and is not affiliated with ShaderGlass.
 import AppKit
 import Carbon.HIToolbox
 
