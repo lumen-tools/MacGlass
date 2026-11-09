@@ -81,6 +81,7 @@ extension AppController: NSMenuItemValidation {
         for (i, f) in frameSkips.enumerated() { add(fps, f.text, #selector(selectFrameSkip(_:)), tag: i) }
         submenu(processing, "FPS", fps)
         let advanced = NSMenu(title: "Advanced")
+        add(advanced, "Allow Tearing", #selector(toggleAllowTearing(_:)))
         add(advanced, "Max Capture Rate", #selector(toggleMaxCaptureRate(_:)))
         submenu(processing, "Advanced", advanced)
         processing.addItem(.separator())
@@ -247,6 +248,7 @@ extension AppController: NSMenuItemValidation {
         case #selector(toggleBilinear(_:)): on(options.bilinear)
         case #selector(toggleRememberFPS(_:)): on(rememberFPS)
         case #selector(selectFrameSkip(_:)): on(item.tag == options.frameSkipIndex)
+        case #selector(toggleAllowTearing(_:)): on(allowTearing)
         case #selector(toggleMaxCaptureRate(_:)): on(options.maxCaptureRate)
         case #selector(removeDefaultProfile(_:)):
             return FileManager.default.fileExists(atPath: AppController.defaultProfileURL.path)
@@ -319,6 +321,11 @@ extension AppController: NSMenuItemValidation {
         options.frameSkipIndex = sender.tag
         if rememberFPS { defaults.set(sender.tag, forKey: "FPS") }
         updateRenderParams()
+    }
+
+    @objc func toggleAllowTearing(_ sender: Any?) {
+        allowTearing.toggle()
+        updateTitle()
     }
 
     @objc func toggleMaxCaptureRate(_ sender: Any?) {

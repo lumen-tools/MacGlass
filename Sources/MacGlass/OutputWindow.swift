@@ -20,7 +20,7 @@ final class OutputView: NSView {
         metalLayer.isOpaque = true
         metalLayer.backgroundColor = NSColor.black.cgColor
         metalLayer.maximumDrawableCount = 2 // less queued frames = lower latency
-        metalLayer.displaySyncEnabled = true
+        metalLayer.displaySyncEnabled = true // Processing > Advanced > Allow Tearing turns this off
         metalLayer.allowsNextDrawableTimeout = true
         wantsLayer = true
         layerContentsRedrawPolicy = .never

@@ -49,13 +49,15 @@ The menus follow ShaderGlass:
 
 | Menu | Items |
 | --- | --- |
-| Processing | Start, Stop, Pause/Unpause, Global Hotkeys, Toggle Menu, Remember Position, Keep Mac Awake, **Bilinear Filter**, GPU, Renderer, FPS, Advanced (Max Capture Rate), Load / Save / Recent profiles, Set as / Remove default profile |
+| Processing | Start, Stop, Pause/Unpause, Global Hotkeys, Toggle Menu, Remember Position, Keep Mac Awake, **Bilinear Filter**, GPU, Renderer, FPS, Advanced (Allow Tearing, Max Capture Rate), Load / Save / Recent profiles, Set as / Remove default profile |
 | Input | Desktop (displays, Lock Current Area), Window, Device, File..., Pixel Size (incl. Adjust for Retina Scale), Crop..., Capture Cursor |
 | Output | Mode (Glass / Clone), Window (Solid / Click-through), Flip, Scale (Free, 25%–1000%, Retain), Aspect Ratio Correction, Orientation, Fullscreen, Take Snapshot... |
 | Shader | Choose from Library..., Next (n), Random (r), Active, Import custom..., Recent imports, Parameters... |
 
 Single-key shortcuts while the MacGlass window has focus: **n** next shader, **r** random shader, **p** / **o** next / previous pixel size, **space** pause.
 Global hotkeys (Processing > Global Hotkeys, changeable): ⌃⇧G Fullscreen, ⌃⇧S Screenshot (saved to Pictures), ⌃⇧T Click-through.
+
+**Allow Tearing** (Processing > Advanced, off by default): frames are shown as soon as they are rendered instead of waiting for the next display refresh. This lowers latency and is recommended with a VRR display (ProMotion, Adaptive-Sync); without VRR it can show tearing. The title bar shows `T` while it is on (and `M` for Max Capture Rate).
 
 ### Pixel Size and Bilinear Filter
 

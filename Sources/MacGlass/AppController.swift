@@ -76,6 +76,20 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         get { defaults.bool(forKey: "Keep Awake") }
         set { defaults.set(newValue, forKey: "Keep Awake"); updateAwake() }
     }
+    /// Processing > Advanced > Allow Tearing (as in ShaderGlass): frames are shown as soon as they are
+    /// rendered instead of waiting for the next display refresh. Best with a VRR display (ProMotion / Adaptive-Sync).
+    var allowTearing: Bool {
+        get { defaults.bool(forKey: "Allow Tearing") }
+        set {
+            defaults.set(newValue, forKey: "Allow Tearing")
+            applyTearing()
+        }
+    }
+
+    func applyTearing() {
+        view?.metalLayer.displaySyncEnabled = !allowTearing
+    }
+
     var rememberFPS: Bool {
         get { defaults.bool(forKey: "Remember FPS") }
         set { defaults.set(newValue, forKey: "Remember FPS") }
@@ -113,6 +127,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         if rememberFPS { options.frameSkipIndex = min(max(0, defaults.integer(forKey: "FPS")), frameSkips.count - 1) }
 
         createWindow()
+        applyTearing()
         buildMenus()
         HotkeyManager.shared.handler = { [weak self] action in self?.hotkey(action) }
         HotkeyManager.shared.register()
@@ -623,7 +638,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         let scale = options.freeScale ? "free" : outputScales[options.outputScaleIndex].mnemonic
         let aspect = options.aspectRatioIndex == customAspectIndex ? String(format: "%.2f", options.aspectRatio)
             : aspectRatios[options.aspectRatioIndex].mnemonic
-        let fps = options.paused ? "paused" : "\(lastFPS.output)fps"
+        // advanced flags after the frame rate, as in ShaderGlass' title: T = Allow Tearing, M = Max Capture Rate
+        let flags = (allowTearing ? "T" : "") + (options.maxCaptureRate ? "M" : "")
+        let fps = options.paused ? "paused" : "\(lastFPS.output)fps" + (flags.isEmpty ? "" : " \(flags)")
         window.title = "MacGlass (\(source)\(shader), \(options.pixelSizeMnemonic)px, \(scale)%, ~\(aspect), \(fps))"
     }
 
