@@ -1,7 +1,5 @@
 # MacGlass
 
-> **Early release (0.x):** expect rough edges and please report problems via GitHub issues.
-
 RetroArch slang shaders over any Mac window or the whole desktop, in real time: CRT, scanlines, NTSC, handheld LCDs and more. It works for every game and emulator, not just inside RetroArch. MacGlass is an independent macOS app modelled on [ShaderGlass](https://github.com/mausimus/ShaderGlass) for Windows, built with Swift, Metal, ScreenCaptureKit and [librashader](https://github.com/SnowflakePowered/librashader).
 
 > **Unofficial:** MacGlass is not ShaderGlass and is not affiliated with or endorsed by ShaderGlass or its author mausimus. Please report MacGlass problems only here, never to ShaderGlass.
